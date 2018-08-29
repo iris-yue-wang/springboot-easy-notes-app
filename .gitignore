@@ -50,3 +50,4 @@ hs_err_pid*
 pmip/
 src/main/resources/static/
 src/main/resources/templates/
+.idea
