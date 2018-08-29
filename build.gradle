@@ -1,0 +1,105 @@
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+}
+
+plugins {
+	id "org.jetbrains.kotlin.jvm" version "1.2.61"
+	id "org.jetbrains.kotlin.plugin.spring" version "1.2.61"
+	id 'org.springframework.boot' version '2.0.4.RELEASE'
+	id "com.wiredforcode.spawn" version "0.8.2"
+	id "au.com.dius.pact" version "3.5.21"
+}
+
+apply plugin: 'io.spring.dependency-management'
+
+import com.wiredforcode.gradle.spawn.*
+
+group = 'com.zuhlke.uk.poc'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = 1.8
+compileKotlin {
+	kotlinOptions {
+		freeCompilerArgs = ["-Xjsr305=strict"]
+		jvmTarget = "1.8"
+	}
+}
+compileTestKotlin {
+	kotlinOptions {
+		freeCompilerArgs = ["-Xjsr305=strict"]
+		jvmTarget = "1.8"
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compile(
+			"org.springframework.boot:spring-boot-starter-jersey",
+			"org.slf4j:slf4j-api"
+	)
+	compile('org.springframework.boot:spring-boot-starter-data-mongodb')
+	compile('org.springframework.boot:spring-boot-starter-web') {
+		exclude module: 'spring-boot-starter-tomcat'
+	}
+	compile('org.springframework.boot:spring-boot-starter-jetty')
+	compile('com.fasterxml.jackson.module:jackson-module-kotlin')
+	compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+	compile("org.jetbrains.kotlin:kotlin-reflect")
+
+	testCompile (
+			"org.assertj:assertj-core",
+	)
+	testCompile('org.springframework.boot:spring-boot-starter-test')
+	testCompile('org.jetbrains.kotlin:kotlin-test')
+	testCompile('org.jetbrains.kotlin:kotlin-test-junit')
+	testCompile('com.github.fakemongo:fongo:2.2.0-RC2')
+}
+
+if('pactVerify' in gradle.startParameter.taskNames) {
+    // Include test dependencies, resources and configuration classes in jar file
+    dependencies {
+        compile('org.springframework.boot:spring-boot-starter-test')
+		compile('org.jetbrains.kotlin:kotlin-test-junit')
+        compile('com.github.fakemongo:fongo:2.2.0-RC2')
+    }
+
+    sourceSets {
+        main {
+			// Add TestConfiguration.kt and application-pactVerify to the source set
+			kotlin {
+				srcDir 'src/test/kotlin'
+				exclude { FileTreeElement e -> ((e.path.contains('Test') && ! e.path.contains('TestConfiguration'))) }
+            }
+			resources {
+				srcDir 'src/test/resources'
+			}
+        }
+    }
+}
+
+task startProvider(type: SpawnProcessTask, dependsOn: 'assemble') {
+	command "java -Dspring.profiles.active=pactVerify -jar ${jar.archivePath}"
+	ready "Started EasyNotesAppApplicationKt"
+}
+
+task stopProvider(type: KillProcessTask) {}
+
+pact {
+    serviceProviders {
+        'easy-notes-app' {
+			port = 8989
+			startProviderTask = startProvider
+			terminateProviderTask = stopProvider
+            // Only load the pacts from the broker if the start tasks from the command line include pactVerify
+            if ('pactVerify' in gradle.startParameter.taskNames) {
+                stateChangeUrl = url('http://localhost:8989/setup')
+                stateChangeUsesBody = false // defaults to true
+                hasPactsFromPactBrokerWithTag('http://35.242.180.87:80', 'test')
+            }
+        }
+    }
+}
